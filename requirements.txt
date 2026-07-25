@@ -1,0 +1,14 @@
+duckdb
+pandas
+pyarrow
+networkx
+scikit-learn
+langgraph
+langchain
+pydantic
+fastapi
+uvicorn
+streamlit
+plotly
+python-dotenv
+requests
