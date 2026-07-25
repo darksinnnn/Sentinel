@@ -22,7 +22,7 @@ from src.config import (
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
+#training
 def train_and_score_anomalies():
     """
     Trains Isolation Forest on peer-relative z-scores and typology features from scored_features.parquet,
