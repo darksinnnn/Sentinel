@@ -43,14 +43,14 @@ def compute_features_and_baselines(conn):
     
     try:
         # Step 1: Pre-process timestamps and extract base columns
-        # Assuming IBM AML columns: "Timestamp", "Account", "Account.1" (Receiver), "Amount Paid"
+        # Assuming IBM AML columns: "Timestamp", "Account", "Account_1" (Receiver), "Amount Paid"
         # We need a standardized timestamp for window functions
         conn.execute("""
             CREATE OR REPLACE TEMP TABLE txn_parsed AS 
             SELECT 
                 "Timestamp"::TIMESTAMP AS txn_time,
                 "Account" AS sender_id,
-                "Account.1" AS receiver_id,
+                "Account_1" AS receiver_id,
                 TRY_CAST("Amount Paid" AS DOUBLE) AS amount_paid,
                 "Payment Format" AS payment_format,
                 "Is Laundering" AS is_laundering

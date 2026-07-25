@@ -38,9 +38,9 @@ def ingest_and_subsample():
     logger.info("Generating synthetic customer metadata...")
     df = pd.read_parquet(PROCESSED_DATA_PATH)
     
-    # IBM AML dataset uses 'Account' for sender and 'Account.1' for receiver.
-    if 'Account' in df.columns and 'Account.1' in df.columns:
-        accounts = pd.concat([df['Account'], df['Account.1']]).unique()
+    # DuckDB renames the duplicate 'Account' column to 'Account_1'
+    if 'Account' in df.columns and 'Account_1' in df.columns:
+        accounts = pd.concat([df['Account'], df['Account_1']]).unique()
     else:
         logger.warning("Could not find 'Account' and 'Account.1' columns. Using fallback logic.")
         # Fallback if columns differ
