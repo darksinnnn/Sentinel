@@ -32,8 +32,8 @@ ML_FEATURES = [
 # IsolationForest decision_function outputs continuous score; lower/more negative means more anomalous.
 # Contamination or score percentiles map to high/medium risk.
 ISOLATION_FOREST_CONTAMINATION = 0.05  # top 5% estimated anomalies
-HIGH_ANOMALY_THRESHOLD = 0.70  # quantile or score threshold for pure ML high risk
-MEDIUM_ANOMALY_THRESHOLD = 0.50
+HIGH_ANOMALY_THRESHOLD = 0.55  # recalibrated threshold
+MEDIUM_ANOMALY_THRESHOLD = 0.35
 
 # Log level
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

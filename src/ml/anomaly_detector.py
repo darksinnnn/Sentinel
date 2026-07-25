@@ -61,22 +61,22 @@ def train_and_score_anomalies():
 
     logger.info("Classifying risk levels based on ML anomaly score and typology triggers...")
     
-    has_typology = (
+    # Strong typology signal: structuring OR rapid cashout with elevated velocity/amount z-score
+    has_strong_typology = (
         (df["is_structuring"] == 1) | 
-        (df["is_rapid_cashout"] == 1) | 
+        ((df["is_rapid_cashout"] == 1) & (df["velocity_zscore"] > 0.5)) |
         (df["is_round_number_suspicious"] == 1)
     )
 
-    # Resolution #4 Risk Classification Logic:
-    # High: Pure ML score >= HIGH_ANOMALY_THRESHOLD OR (Score >= MEDIUM_ANOMALY_THRESHOLD AND typology flag)
-    # Medium: Score >= MEDIUM_ANOMALY_THRESHOLD OR typology flag
+    # High: Anomaly score >= 0.65 OR (Anomaly score >= 0.40 AND strong typology)
+    # Medium: Anomaly score >= 0.40 OR strong typology
     # Low: Otherwise
     
     high_cond = (df["ml_anomaly_score"] >= HIGH_ANOMALY_THRESHOLD) | (
-        (df["ml_anomaly_score"] >= MEDIUM_ANOMALY_THRESHOLD) & has_typology
+        (df["ml_anomaly_score"] >= MEDIUM_ANOMALY_THRESHOLD) & has_strong_typology
     )
     medium_cond = (
-        (df["ml_anomaly_score"] >= MEDIUM_ANOMALY_THRESHOLD) | has_typology
+        (df["ml_anomaly_score"] >= MEDIUM_ANOMALY_THRESHOLD) | has_strong_typology
     ) & (~high_cond)
 
     df["risk_level"] = "low"

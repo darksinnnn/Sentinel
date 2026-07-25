@@ -25,19 +25,6 @@ from src.tools.explanation_stub import stub_explanation_node
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# State definition for Orchestrator State Graph
-class AgentState(TypedDict):
-    query: str
-    session_id: str
-    intent: Optional[IntentObject]
-    filters: Optional[ToolFilters]
-    tools_invoked: List[str]
-    tools_skipped: List[str]
-    reasoning: str
-    flagged_items: List[FlaggedItem]
-    supporting_metrics: Dict[str, Any]
-    final_response: Optional[AgentResponse]
-
 def process_query(query: str, session_id: str = "default_session") -> AgentResponse:
     """
     Main entry point for the Sentinel Agentic Orchestrator.
@@ -67,8 +54,8 @@ def process_query(query: str, session_id: str = "default_session") -> AgentRespo
 
     # 2. Dynamic Routing based on Intent
     if intent_type == "broad_scan":
-        reasoning = "Executing full scan pipeline: EDA profiling -> feature extraction -> ML anomaly detection -> risk classification."
-        tools_invoked = ["eda", "feature_engineering", "anomaly_detection", "risk_classification"]
+        reasoning = "Executing full scan pipeline: EDA profiling -> feature extraction -> ML anomaly detection -> risk classification -> narrative explanation."
+        tools_invoked = ["eda", "feature_engineering", "anomaly_detection", "risk_classification", "explanation"]
         tools_skipped = ["single_entity_lookup", "sanctions_screening", "aggregation_query"]
         
         supporting_metrics = run_eda(filters, session_id=session_id)
@@ -76,8 +63,8 @@ def process_query(query: str, session_id: str = "default_session") -> AgentRespo
         flagged_items = format_risk_classification(raw_anomalies, session_id=session_id)
 
     elif intent_type == "targeted_pattern":
-        reasoning = f"Executing targeted pattern search for '{intent.pattern_hint}': scoped feature extraction -> anomaly detection -> risk classification."
-        tools_invoked = ["feature_engineering", "anomaly_detection", "risk_classification"]
+        reasoning = f"Executing targeted pattern search for '{intent.pattern_hint}': scoped feature extraction -> anomaly detection -> risk classification -> narrative explanation."
+        tools_invoked = ["feature_engineering", "anomaly_detection", "risk_classification", "explanation"]
         tools_skipped = ["eda", "single_entity_lookup", "sanctions_screening", "aggregation_query"]
         
         raw_anomalies = run_anomaly_detection(filters, session_id=session_id)
@@ -85,14 +72,14 @@ def process_query(query: str, session_id: str = "default_session") -> AgentRespo
 
     elif intent_type == "aggregation_query":
         reasoning = "Executing direct aggregation rule tool. ML scoring skipped per query intent specification."
-        tools_invoked = ["aggregation_query"]
+        tools_invoked = ["aggregation_query", "explanation"]
         tools_skipped = ["eda", "feature_engineering", "anomaly_detection", "risk_classification", "single_entity_lookup", "sanctions_screening"]
         
         flagged_items = run_aggregation_query(filters, session_id=session_id)
 
     elif intent_type == "single_entity_lookup":
-        reasoning = f"Executing single entity lookup for customer '{filters.customer_id}' + sanctions/PEP screening. Full dataset ML scan skipped."
-        tools_invoked = ["single_entity_lookup", "sanctions_screening"]
+        reasoning = f"Executing single entity lookup for customer '{filters.customer_id}' + sanctions/PEP screening -> narrative explanation. Full dataset ML scan skipped."
+        tools_invoked = ["single_entity_lookup", "sanctions_screening", "explanation"]
         tools_skipped = ["eda", "feature_engineering", "anomaly_detection", "risk_classification", "aggregation_query"]
         
         flagged_items = run_entity_lookup(filters, session_id=session_id)
@@ -106,17 +93,20 @@ def process_query(query: str, session_id: str = "default_session") -> AgentRespo
 
     else: # Default fallback
         reasoning = "Executing default scan pipeline."
-        tools_invoked = ["feature_engineering", "anomaly_detection", "risk_classification"]
+        tools_invoked = ["feature_engineering", "anomaly_detection", "risk_classification", "explanation"]
         tools_skipped = ["eda", "single_entity_lookup", "sanctions_screening", "aggregation_query"]
         
         raw_anomalies = run_anomaly_detection(filters, session_id=session_id)
         flagged_items = format_risk_classification(raw_anomalies, session_id=session_id)
 
+    filters_dict = intent.entities.model_dump()
+    filters_dict["pattern_hint"] = intent.pattern_hint
+
     # 3. Explanation Node (Stub for Phase 2, LLM call in Phase 3)
     response = stub_explanation_node(
         query=query,
         intent_type=intent_type,
-        filters_detected=intent.entities.model_dump(),
+        filters_detected=filters_dict,
         tools_invoked=tools_invoked,
         tools_skipped=tools_skipped,
         reasoning=reasoning,
@@ -128,11 +118,12 @@ def process_query(query: str, session_id: str = "default_session") -> AgentRespo
     return response
 
 if __name__ == "__main__":
-    # Canonical verification tests for Phase 2
+    # Canonical verification tests
     canonical_queries = [
         "Find structuring patterns in the last 30 days",
         "Which customers made 10+ transactions under $10k?",
-        "Is customer 8000EBD30 suspicious?"
+        "Is customer 8000EBD30 suspicious?",
+        "Is customer NONEXISTENT999 suspicious?"  # Test out-of-scope/inactive customer ID
     ]
     
     print("\n========================================================")
