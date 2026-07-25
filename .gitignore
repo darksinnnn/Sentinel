@@ -28,3 +28,5 @@ data/
 *.parquet
 *.db
 *.csv
+
+walkthrough.md
