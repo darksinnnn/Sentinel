@@ -1,0 +1,30 @@
+extras
+
+/node_modules
+/.npm
+/.yarn
+/.pnp.*
+.pnp.js
+.yarn- Integrity.yml
+.yarnrc
+.yarnrc.yml
+
+# Implementation plans
+implementation_plan.md
+
+Sentinel_Architecture.md
+
+Sentinel_Implementation_Plan.md
+.env
+
+venv
+Sentinel_Project_Tracker.md
+
+HI-Small_accounts.csv
+HI-Small_Patterns.txt
+HI-Small_Trans.csv
+
+data/
+*.parquet
+*.db
+*.csv
