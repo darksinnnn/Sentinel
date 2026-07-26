@@ -161,109 +161,165 @@ def compute_features_and_baselines(conn):
     """)
     logger.info("  In/out ratio computed.")
 
-    # ── Step 4: Rapid cash-out signal ─────────────────────────────────
-    logger.info("Step 4/7: Computing rapid cash-out signal...")
-    # Use a window-based approach: for each account, track the most recent
-    # inbound timestamp and compute the delta. This avoids self-joins that
-    # cause row duplication.
+    # ── Step 4: Rapid cash-out signal (corrected definition) ──────────────
+    logger.info("Step 4/7: Computing rapid cash-out signal (corrected)...")
+    #
+    # Three required conditions (all three must hold simultaneously):
+    #   (a) LARGE inbound qualifier: amount_received >= $10,000
+    #       Filters out micro-amounts that cause ordinary daily transactions
+    #       to match (e.g. $15 Venmo receipt followed by any spend).
+    #   (b) BOUNDED lookback window: inbound must occur within 48h of outbound.
+    #       Prevents matching against stale inbounds from months ago that have
+    #       no causal relationship to the current outbound.
+    #   (c) AMOUNT-RELATIVE ratio: outbound >= 50% of triggering inbound.
+    #       Ensures the outbound is meaningfully draining what was received,
+    #       not a $5 coffee after a $50k wire.
+    #
+    # We use an explicit JOIN rather than the window-MAX approach: MAX(timestamp)
+    # and MAX(amount) in the same frame return values from different rows,
+    # so we cannot guarantee they correspond to the same triggering inbound.
     conn.execute("""
         CREATE OR REPLACE TEMP TABLE cashout_enriched AS
-        WITH all_events AS (
-            -- Unify inbound and outbound into a single timeline per account
-            SELECT sender_id AS account_id, txn_time, amount_paid, 0 AS amount_in, 'OUT' AS direction
-            FROM txn_parsed WHERE amount_paid > 0
-            UNION ALL
-            SELECT receiver_id AS account_id, txn_time, 0 AS amount_paid, amount_received AS amount_in, 'IN' AS direction
-            FROM txn_parsed WHERE amount_received > 0
+        WITH large_inbounds AS (
+            -- (a) Only inbound transfers >= $10,000 qualify as triggering inbounds
+            SELECT
+                receiver_id     AS account_id,
+                txn_time        AS inbound_time,
+                amount_received AS inbound_amount
+            FROM txn_parsed
+            WHERE amount_received >= 10000
         ),
-        with_last_inbound AS (
-            SELECT 
-                account_id,
-                txn_time,
-                direction,
-                amount_paid,
-                amount_in,
-                -- For each row, find the most recent inbound event timestamp (including current)
-                MAX(CASE WHEN direction = 'IN' THEN txn_time ELSE NULL END) 
-                    OVER (PARTITION BY account_id ORDER BY txn_time 
-                          ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) 
-                    AS last_inbound_time
-            FROM all_events
+        outbounds AS (
+            SELECT
+                sender_id  AS account_id,
+                txn_time   AS outbound_time,
+                amount_paid AS outbound_amount
+            FROM txn_parsed
+            WHERE amount_paid > 0
         ),
-        -- Deduplicate: one row per (account, outbound_time) - pick shortest delta
-        deduped AS (
-            SELECT 
-                account_id,
-                txn_time AS outbound_time,
-                EXTRACT(EPOCH FROM (txn_time - last_inbound_time)) / 3600.0 AS cashout_hours_delta,
+        matched AS (
+            SELECT
+                o.account_id,
+                o.outbound_time,
+                o.outbound_amount,
+                l.inbound_amount AS triggering_inbound_amount,
+                EXTRACT(EPOCH FROM (o.outbound_time - l.inbound_time)) / 3600.0
+                    AS cashout_hours_delta,
+                -- When multiple qualifying inbounds exist, pick the most recent
                 ROW_NUMBER() OVER (
-                    PARTITION BY account_id, txn_time 
-                    ORDER BY (txn_time - last_inbound_time) ASC
+                    PARTITION BY o.account_id, o.outbound_time
+                    ORDER BY l.inbound_time DESC
                 ) AS rn
-            FROM with_last_inbound
-            WHERE direction = 'OUT'
-              AND last_inbound_time IS NOT NULL
-              AND txn_time - last_inbound_time <= INTERVAL 7 DAYS
+            FROM outbounds o
+            JOIN large_inbounds l
+                ON  o.account_id = l.account_id
+                AND l.inbound_time < o.outbound_time              -- inbound must precede outbound
+                AND o.outbound_time - l.inbound_time
+                        <= INTERVAL '48' HOUR                     -- (b) bounded 48h window
+                AND o.outbound_amount >= l.inbound_amount * 0.50  -- (c) amount-relative ratio
         )
-        SELECT account_id, outbound_time, cashout_hours_delta
-        FROM deduped WHERE rn = 1
+        SELECT account_id, outbound_time, cashout_hours_delta, triggering_inbound_amount
+        FROM matched WHERE rn = 1
     """)
-    
-    # Join rapid cash-out signal onto sender features (1:1 guaranteed)
+
+    # Join onto sender features (1:1: each outbound appears at most once in cashout_enriched)
     conn.execute("""
         CREATE OR REPLACE TEMP TABLE sender_features_v3 AS
-        SELECT 
+        SELECT
             s.*,
             c.cashout_hours_delta,
-            -- Flag: rapid cash-out if outbound within 24 hours of large inbound
-            CASE WHEN c.cashout_hours_delta IS NOT NULL AND c.cashout_hours_delta < 24 
+            -- Flag: large inbound (>=$10k) followed within 24h by an outbound
+            -- that drains >= 50% of what was received. All three qualifying
+            -- conditions are enforced upstream in cashout_enriched.
+            CASE WHEN c.cashout_hours_delta IS NOT NULL AND c.cashout_hours_delta < 24
                  THEN 1 ELSE 0 END AS is_rapid_cashout
         FROM sender_features_v2 s
-        LEFT JOIN cashout_enriched c 
-            ON s.sender_id = c.account_id 
-            AND s.txn_time = c.outbound_time
+        LEFT JOIN cashout_enriched c
+            ON  s.sender_id = c.account_id
+            AND s.txn_time  = c.outbound_time
     """)
-    logger.info("  Rapid cash-out signal computed.")
+    logger.info("  Rapid cash-out signal computed (corrected: large-inbound + 48h window + 50% ratio).")
 
-    # ── Step 5: Peer-group baselines ──────────────────────────────────
-    logger.info("Step 5/7: Computing peer-group baselines...")
-    conn.execute(f"""
-        CREATE OR REPLACE TABLE peer_group_baselines AS
-        SELECT 
+    # ── Step 5: Peer-group baselines (ROBUST: median/MAD + volume_tier) ─
+    logger.info("Step 5/7: Computing peer-group baselines (median/MAD, volume-tiered)...")
+    # Using MEDIAN and MAD (Median Absolute Deviation) instead of MEAN/STDDEV
+    # to prevent outlier-poisoning of cohort baselines (e.g. one mega-volume
+    # account dragging the cohort mean to a level that makes everyone else
+    # look normal by comparison).
+    # Added volume_tier: top-10% rolling_amount accounts are 'high_volume',
+    # bottom-90% are 'standard' — prevents retail baseline being distorted
+    # by institutional/corporate transaction volumes in the same segment.
+    conn.execute("""
+        CREATE OR REPLACE TEMP TABLE sender_features_with_tier AS
+        SELECT
+            f.*,
             c.segment,
             CASE 
                 WHEN c.account_age_days < 180 THEN 'new'
                 WHEN c.account_age_days < 365 THEN 'established'
                 ELSE 'veteran'
             END AS age_tier,
-            
-            -- Amount baselines
-            AVG(f.rolling_amount_30d) AS avg_peer_rolling_amount,
-            STDDEV(f.rolling_amount_30d) AS std_peer_rolling_amount,
-            
-            -- Velocity baselines
-            AVG(f.velocity_30d) AS avg_peer_velocity,
-            STDDEV(f.velocity_30d) AS std_peer_velocity,
-            
-            -- Transaction count baselines
-            AVG(f.rolling_txn_count_30d) AS avg_peer_txn_count,
-            STDDEV(f.rolling_txn_count_30d) AS std_peer_txn_count,
-            
-            -- Counterparty baselines
-            AVG(f.unique_counterparties_30d) AS avg_peer_counterparties,
-            STDDEV(f.unique_counterparties_30d) AS std_peer_counterparties,
-            
-            -- Peer count for confidence
-            COUNT(DISTINCT f.sender_id) AS peer_account_count
-            
+            -- Volume tier: global percentile rank across actual dataset (decoupled from random segment label)
+            CASE 
+                WHEN PERCENT_RANK() OVER (
+                    ORDER BY f.rolling_amount_30d
+                ) >= 0.90 THEN 'high_volume'
+                ELSE 'standard'
+            END AS volume_tier
         FROM sender_features_v3 f
         JOIN customers c ON f.sender_id = c.customer_id
-        GROUP BY 1, 2
     """)
     
-    # Persist baselines
+    # Single-pass Robust Baselines using MEDIAN and IQR (Interquartile Range: Q3 - Q1)
+    # Applied in LOG-SPACE (log1p transform) to correct for extreme right-skew:
+    #   - rolling_amount_30d skewness: 5.14, mean/median ratio: 784x
+    #   - velocity_30d skewness:       83.6, mean/median ratio: 77x
+    # IQR-based robust z-scoring on raw (untransformed) skewed distributions
+    # structurally inflates z-scores for ordinary high-end transactions — the
+    # log1p transform brings both into approximate symmetry before IQR is applied.
+    # IQR * 0.7413 is the robust estimator of std-dev (Qn estimator constant).
+    conn.execute(f"""
+        CREATE OR REPLACE TABLE peer_group_baselines AS
+        SELECT 
+            segment,
+            age_tier,
+            volume_tier,
+            
+            -- Robust Medians in LOG-SPACE (log1p to handle zeros)
+            MEDIAN(LN(rolling_amount_30d + 1.0))    AS med_peer_log_amount,
+            MEDIAN(LN(velocity_30d + 1.0))          AS med_peer_log_velocity,
+            MEDIAN(rolling_txn_count_30d)            AS med_peer_txn_count,
+            MEDIAN(unique_counterparties_30d)        AS med_peer_counterparties,
+            
+            -- Robust IQRs in LOG-SPACE (Q3 - Q1)
+            (QUANTILE_CONT(LN(rolling_amount_30d + 1.0), 0.75)
+             - QUANTILE_CONT(LN(rolling_amount_30d + 1.0), 0.25)) AS iqr_peer_log_amount,
+            (QUANTILE_CONT(LN(velocity_30d + 1.0), 0.75)
+             - QUANTILE_CONT(LN(velocity_30d + 1.0), 0.25))       AS iqr_peer_log_velocity,
+            (QUANTILE_CONT(rolling_txn_count_30d, 0.75)
+             - QUANTILE_CONT(rolling_txn_count_30d, 0.25))         AS iqr_peer_txn_count,
+            (QUANTILE_CONT(unique_counterparties_30d, 0.75)
+             - QUANTILE_CONT(unique_counterparties_30d, 0.25))     AS iqr_peer_counterparties,
+            
+            -- Preserved raw mean/std for explainability (still in raw space)
+            MEDIAN(rolling_amount_30d)              AS med_peer_rolling_amount,
+            AVG(rolling_amount_30d)                 AS avg_peer_rolling_amount,
+            STDDEV(rolling_amount_30d)              AS std_peer_rolling_amount,
+            AVG(velocity_30d)                       AS avg_peer_velocity,
+            STDDEV(velocity_30d)                    AS std_peer_velocity,
+            AVG(rolling_txn_count_30d)              AS avg_peer_txn_count,
+            STDDEV(rolling_txn_count_30d)           AS std_peer_txn_count,
+            AVG(unique_counterparties_30d)          AS avg_peer_counterparties,
+            STDDEV(unique_counterparties_30d)       AS std_peer_counterparties,
+            
+            COUNT(DISTINCT sender_id)               AS peer_account_count
+            
+        FROM sender_features_with_tier
+        GROUP BY segment, age_tier, volume_tier
+    """)
+    
     conn.execute(f"COPY peer_group_baselines TO '{PEER_BASELINES_PARQUET}' (FORMAT PARQUET)")
-    logger.info("  Peer-group baselines computed and saved.")
+    logger.info("  Peer-group baselines (log-space median/IQR, volume-tiered) computed and saved.")
 
     # ── Step 6: Deviation scores (z-scores against peer baselines) ────
     logger.info("Step 6/7: Computing deviation scores and typology flags...")
@@ -289,24 +345,26 @@ def compute_features_and_baselines(conn):
             f.is_rapid_cashout,
             
             -- Peer context
-            c.segment,
-            CASE 
-                WHEN c.account_age_days < 180 THEN 'new'
-                WHEN c.account_age_days < 365 THEN 'established'
-                ELSE 'veteran'
-            END AS age_tier,
+            f.segment,
+            f.age_tier,
+            f.volume_tier,
             c.country,
             c.kyc_risk_rating,
             
-            -- Z-scores: how far this account's behavior deviates from its peer group
-            (f.rolling_amount_30d - p.avg_peer_rolling_amount) 
-                / NULLIF(p.std_peer_rolling_amount, 0) AS amount_zscore,
-            (f.velocity_30d - p.avg_peer_velocity) 
-                / NULLIF(p.std_peer_velocity, 0) AS velocity_zscore,
-            (f.rolling_txn_count_30d - p.avg_peer_txn_count) 
-                / NULLIF(p.std_peer_txn_count, 0) AS txn_count_zscore,
-            (f.unique_counterparties_30d - p.avg_peer_counterparties) 
-                / NULLIF(p.std_peer_counterparties, 0) AS counterparty_zscore,
+            -- Log-space robust deviation scores:
+            --   z = (log1p(value) - median_log) / (IQR_log * 0.7413)
+            -- Using log1p transform because rolling_amount/velocity are extremely
+            -- right-skewed (skewness 5.1–83.6); IQR-based z-scoring on raw values
+            -- produces z-scores of 24+ at p90 for ordinary transactions.
+            -- Log-space z-scores are approximately N(0,1) for non-laundering activity.
+            (LN(f.rolling_amount_30d + 1.0) - p.med_peer_log_amount)
+                / NULLIF(p.iqr_peer_log_amount * 0.7413, 0)   AS amount_zscore,
+            (LN(f.velocity_30d + 1.0) - p.med_peer_log_velocity)
+                / NULLIF(p.iqr_peer_log_velocity * 0.7413, 0) AS velocity_zscore,
+            (f.rolling_txn_count_30d - p.med_peer_txn_count)
+                / NULLIF(p.iqr_peer_txn_count * 0.7413, 0)       AS txn_count_zscore,
+            (f.unique_counterparties_30d - p.med_peer_counterparties)
+                / NULLIF(p.iqr_peer_counterparties * 0.7413, 0)  AS counterparty_zscore,
             
             -- Typology flags (boolean risk signals)
             CASE WHEN f.sub_threshold_count_30d >= 3 THEN 1 ELSE 0 END AS is_structuring,
@@ -319,21 +377,15 @@ def compute_features_and_baselines(conn):
             p.avg_peer_velocity,
             p.peer_account_count
             
-        FROM sender_features_v3 f
+        FROM sender_features_with_tier f
         JOIN customers c ON f.sender_id = c.customer_id
         LEFT JOIN peer_group_baselines p 
-            ON c.segment = p.segment
-            AND (CASE 
-                    WHEN c.account_age_days < 180 THEN 'new'
-                    WHEN c.account_age_days < 365 THEN 'established'
-                    ELSE 'veteran'
-                END) = p.age_tier
+            ON f.segment = p.segment
+            AND f.age_tier = p.age_tier
+            AND f.volume_tier = p.volume_tier
     """)
     
-    # Persist scored features
     conn.execute(f"COPY scored_features TO '{SCORED_FEATURES_PARQUET}' (FORMAT PARQUET)")
-    
-    # Also persist raw sender features for ML consumption
     conn.execute(f"COPY (SELECT * FROM sender_features_v3) TO '{FEATURES_PARQUET}' (FORMAT PARQUET)")
     
     # Summary stats

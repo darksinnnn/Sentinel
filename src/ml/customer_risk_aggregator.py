@@ -10,9 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from src.config import (
     ML_SCORED_PATH,
     CUSTOMERS_PATH,
-    CUSTOMER_RISK_PATH,
-    HIGH_ANOMALY_THRESHOLD,
-    MEDIUM_ANOMALY_THRESHOLD
+    CUSTOMER_RISK_PATH
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -36,6 +34,7 @@ def aggregate_customer_risk():
         sender_id AS customer_id,
         COUNT(*) AS total_txns,
         ROUND(SUM(amount_paid), 2) AS total_amount_sent,
+        ROUND(MAX(composite_risk_score), 4) AS max_composite_score,
         ROUND(MAX(ml_anomaly_score), 4) AS max_ml_score,
         SUM(CASE WHEN risk_level = 'high' THEN 1 ELSE 0 END) AS high_risk_txns,
         SUM(CASE WHEN risk_level = 'medium' THEN 1 ELSE 0 END) AS medium_risk_txns,
@@ -59,6 +58,7 @@ def aggregate_customer_risk():
             meta.account_age_days,
             c.total_txns,
             c.total_amount_sent,
+            c.max_composite_score,
             c.max_ml_score,
             c.high_risk_txns,
             c.medium_risk_txns,
@@ -67,8 +67,8 @@ def aggregate_customer_risk():
             c.rapid_cashout_flags_count,
             c.round_number_flags_count,
             CASE 
-                WHEN c.high_risk_txns >= 1 OR c.max_ml_score >= {HIGH_ANOMALY_THRESHOLD} THEN 'high'
-                WHEN c.medium_risk_txns >= 1 OR c.max_ml_score >= {MEDIUM_ANOMALY_THRESHOLD} THEN 'medium'
+                WHEN c.high_risk_txns >= 1 THEN 'high'
+                WHEN c.medium_risk_txns >= 1 THEN 'medium'
                 ELSE 'low'
             END AS customer_risk_level
         FROM customer_agg c
@@ -78,7 +78,6 @@ def aggregate_customer_risk():
     os.makedirs(os.path.dirname(CUSTOMER_RISK_PATH), exist_ok=True)
     conn.execute(classified_query)
 
-    # Verification stats
     stats = conn.execute(f"SELECT customer_risk_level, COUNT(*) FROM read_parquet('{CUSTOMER_RISK_PATH}') GROUP BY 1").fetchall()
     logger.info(f"Customer Risk Rollup complete! Saved to {CUSTOMER_RISK_PATH}")
     logger.info(f"Customer Risk Distribution: {stats}")
