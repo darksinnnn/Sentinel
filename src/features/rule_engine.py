@@ -69,7 +69,9 @@ def compute_features_and_baselines(conn):
             TRY_CAST("Amount Paid" AS DOUBLE) AS amount_paid,
             TRY_CAST("Amount Received" AS DOUBLE) AS amount_received,
             "Payment Format" AS payment_format,
-            "Is Laundering" AS is_laundering
+            "Is Laundering" AS is_laundering,
+            typology,
+            attempt_id
         FROM transactions
     """)
     
@@ -87,6 +89,8 @@ def compute_features_and_baselines(conn):
             amount_paid,
             payment_format,
             is_laundering,
+            typology,
+            attempt_id,
             
             -- Rolling counts and sums
             COUNT(*) OVER w30 AS rolling_txn_count_30d,
@@ -99,8 +103,8 @@ def compute_features_and_baselines(conn):
             SUM(CASE WHEN amount_paid BETWEEN 9000 AND 9999 THEN 1 ELSE 0 END) OVER w30 
                 AS sub_threshold_count_30d,
             
-            -- Round-number frequency
-            SUM(CASE WHEN amount_paid > 0 AND amount_paid % 100 = 0 THEN 1 ELSE 0 END) OVER w30 
+            -- Round-number frequency (large round numbers)
+            SUM(CASE WHEN amount_paid >= 1000 AND amount_paid % 1000 = 0 THEN 1 ELSE 0 END) OVER w30 
                 AS round_number_count_30d,
             
             -- Counterparty diversity
@@ -215,8 +219,8 @@ def compute_features_and_baselines(conn):
                 ON  o.account_id = l.account_id
                 AND l.inbound_time < o.outbound_time              -- inbound must precede outbound
                 AND o.outbound_time - l.inbound_time
-                        <= INTERVAL '48' HOUR                     -- (b) bounded 48h window
-                AND o.outbound_amount >= l.inbound_amount * 0.50  -- (c) amount-relative ratio
+                        <= INTERVAL '12' HOUR                     -- (b) bounded 12h window
+                AND o.outbound_amount >= l.inbound_amount * 0.90  -- (c) amount-relative ratio
         )
         SELECT account_id, outbound_time, cashout_hours_delta, triggering_inbound_amount
         FROM matched WHERE rn = 1
@@ -229,9 +233,10 @@ def compute_features_and_baselines(conn):
             s.*,
             c.cashout_hours_delta,
             -- Flag: large inbound (>=$10k) followed within 24h by an outbound
-            -- that drains >= 50% of what was received. All three qualifying
+            -- that drains >= 90% of what was received. All three qualifying
             -- conditions are enforced upstream in cashout_enriched.
-            CASE WHEN c.cashout_hours_delta IS NOT NULL AND c.cashout_hours_delta < 24
+            CASE WHEN c.cashout_hours_delta IS NOT NULL AND c.cashout_hours_delta < 12
+                  AND s.payment_format IN ('ACH', 'Wire', 'Bitcoin', 'Cash')
                  THEN 1 ELSE 0 END AS is_rapid_cashout
         FROM sender_features_v2 s
         LEFT JOIN cashout_enriched c
@@ -332,6 +337,8 @@ def compute_features_and_baselines(conn):
             f.amount_paid,
             f.payment_format,
             f.is_laundering,
+            f.typology,
+            f.attempt_id,
             
             -- Raw features
             f.rolling_txn_count_30d,
@@ -367,9 +374,10 @@ def compute_features_and_baselines(conn):
                 / NULLIF(p.iqr_peer_counterparties * 0.7413, 0)  AS counterparty_zscore,
             
             -- Typology flags (boolean risk signals)
-            CASE WHEN f.sub_threshold_count_30d >= 3 THEN 1 ELSE 0 END AS is_structuring,
-            CASE WHEN f.round_number_count_30d >= 5 
-                  AND f.rolling_txn_count_30d >= 5 
+            CASE WHEN f.sub_threshold_count_30d >= 2 
+                  AND f.payment_format IN ('ACH', 'Wire', 'Cash')
+                 THEN 1 ELSE 0 END AS is_structuring,
+            CASE WHEN f.amount_paid >= 1000 AND f.amount_paid % 1000 = 0 
                  THEN 1 ELSE 0 END AS is_round_number_suspicious,
             
             -- Peer baseline values (for explainability)

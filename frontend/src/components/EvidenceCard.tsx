@@ -1,6 +1,7 @@
 import React from 'react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { motion, useReducedMotion } from 'framer-motion';
-import { FileText, ChevronDown, ChevronUp, Layers, Activity, AlertTriangle, DollarSign } from 'lucide-react';
+import { FileText, ChevronDown, ChevronUp, Layers, Activity, AlertTriangle, DollarSign, Download } from 'lucide-react';
 import type { FlaggedItem } from '../types/outputContract';
 import { VerdictStamp } from './VerdictStamp';
 
@@ -57,6 +58,16 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({ item, index }) => {
     },
   };
 
+  const handleExportItem = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(item, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `sentinel_entity_${item.entity_id}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
   // Evidence entries, skip empty objects
   const evidenceEntries = Object.entries(item.evidence || {}).filter(
     ([, v]) => !(typeof v === 'object' && v !== null && Object.keys(v).length === 0)
@@ -79,7 +90,17 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({ item, index }) => {
             ID: <span className="text-[#3C6158]">{item.entity_id}</span>
           </h4>
         </div>
-        <VerdictStamp riskLevel={item.risk_level} />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportItem}
+            className="flex items-center gap-1.5 font-mono text-xs text-[#6B7280] hover:text-[#1F2A2E] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4F7C71] rounded px-1"
+            title="Download Entity Evidence JSON"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+          <VerdictStamp riskLevel={item.risk_level} />
+        </div>
       </div>
 
       {/* ── Core classification grid ───────────────────────────────── */}
@@ -148,6 +169,49 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({ item, index }) => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Per-Entity 30-Day Historical Chart ────────────────────────── */}
+      {item.chart_data && item.chart_data.length > 0 && (
+        <div className="mb-4">
+          <span className="font-serif font-semibold text-xs text-[#6B7280] uppercase tracking-wider block mb-2">
+            30-Day Transaction Volume Profile
+          </span>
+          <div className="bg-[#E5DFD3] border border-[#D6CDBA] rounded p-2 h-48 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={item.chart_data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#D6CDBA" vertical={false} />
+                <XAxis 
+                  dataKey="txn_date" 
+                  tick={{ fontSize: 9, fill: '#6B7280' }} 
+                  tickFormatter={(val) => val.split('-').slice(1).join('/')}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis 
+                  tick={{ fontSize: 9, fill: '#6B7280' }} 
+                  tickFormatter={(val) => `$${(val / 1000)}k`}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1F2A2E', borderColor: '#2D3D43', borderRadius: '4px', color: '#EFEAE0', fontSize: '11px' }}
+                  itemStyle={{ color: '#EFEAE0' }}
+                  formatter={(val: number) => [`$${val.toLocaleString()}`, 'Daily Volume']}
+                  labelFormatter={(label) => `Date: ${label}`}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="daily_amount" 
+                  stroke="#A63D2F" 
+                  strokeWidth={2} 
+                  dot={{ r: 2, fill: '#A63D2F', strokeWidth: 0 }}
+                  activeDot={{ r: 4, strokeWidth: 0 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </div>
       )}

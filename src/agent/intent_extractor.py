@@ -43,7 +43,7 @@ Intent Type Rules:
 - "broad_scan": Query asks for general analysis, top suspicious items, or dataset overview (e.g., "Analyze this dataset", "Show top suspicious accounts").
 - "follow_up": Query refers to previous turns or asks for clarification.
 
-CRITICAL: For aggregation_query, extract the numerical values dynamically. E.g. "under 20k" -> amount_threshold: 20000.0, "5+ transactions" -> count_threshold: 5. Do NOT hardcode 10000 or 10 unless the user specifically asks for it.
+CRITICAL: For aggregation_query, YOU MUST extract the numerical values dynamically. E.g. "under 20k" -> amount_threshold: 20000.0, "5+ transactions" -> count_threshold: 5. Do NOT output null for thresholds if numbers are present in the query. Do NOT hardcode 10000 or 10 unless the user specifically asks for it.
 
 Extract entities where present (e.g. account numbers like "8000EBD30" -> customer_id).
 Do NOT include markdown formatting, code blocks, or extra commentary. Return raw JSON only.

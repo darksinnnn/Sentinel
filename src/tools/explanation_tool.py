@@ -57,35 +57,50 @@ def deterministic_explanation(item: FlaggedItem, intent_type: str) -> tuple[str,
             f"with zero matching rule-typology flags. System assigned 'insufficient_evidence' "
             f"to highlight unconfirmed statistical outlier for manual analyst investigation."
         )
-    elif pattern == "structuring":
+    elif pattern == "structuring" or pattern == "smurfing":
         sub_cnt = ev.get("sub_threshold_count_30d", ev.get("sub_threshold_count", "multiple"))
         narrative = (
-            f"Flagged for structuring pattern with risk score {score:.2f} ({level} risk). "
+            f"Flagged for Placement: Smurfing / Structuring with risk score {score:.2f} ({level} risk). "
             f"Entity {eid} registered {sub_cnt} sub-threshold transactions ($9,000–$9,999) "
-            f"within a 30-day window, indicating potential threshold avoidance."
+            f"within a 30-day window, indicating potential threshold avoidance behavior commonly associated with placement of illicit funds."
         )
     elif pattern == "rapid_cashout":
         narrative = (
-            f"Flagged for rapid cash-out behavior with risk score {score:.2f} ({level} risk). "
-            f"Entity {eid} executed a large outbound transfer draining >=50% of a prior >=$10,000 inbound "
-            f"deposit within a 24-hour horizon."
+            f"Flagged for Layering: Pass-Through / Rapid Cash-Out with risk score {score:.2f} ({level} risk). "
+            f"Entity {eid} executed large outbound transfers draining >=50% of a prior >=$10,000 inbound "
+            f"deposit within a 24-hour horizon, indicating potential pass-through layering activity."
         )
     elif pattern in ["sanctions_match", "ofac_sdn_match"]:
         ofac_info = ev.get("ofac_matches", "OFAC SDN list match")
         narrative = (
             f"CRITICAL SANCTIONS ALERT: Entity {eid} matched against US Treasury OFAC SDN sanctions list. "
-            f"Details: {ofac_info}."
+            f"Details: {ofac_info}. Immediate freeze/block may be required."
         )
         action = "report"
     elif pattern == "round_number_suspicious":
         narrative = (
-            f"Flagged for suspicious round-number transaction concentration with risk score {score:.2f} ({level} risk). "
-            f"Entity {eid} exhibited high frequency of clean, round-amount transactions."
+            f"Flagged for Anomalous Behavior: Round-Number Concentration with risk score {score:.2f} ({level} risk). "
+            f"Entity {eid} exhibited an abnormally high frequency of clean, round-amount transactions indicative of non-commercial/synthetic activity."
+        )
+    elif "cycle" in str(pattern).lower() or "u_turn" in str(pattern).lower():
+        narrative = (
+            f"Flagged for Layering: Circular Money Movement (U-Turn) with risk score {score:.2f} ({level} risk). "
+            f"Entity {eid} is part of a closed transaction cycle where funds return to the origin account (or a closely related node). This highly indicative layering typology requires immediate investigation."
+        )
+        action = "report" # Cycles are inherently highly suspicious
+    elif "fan" in str(pattern).lower() or "scatter" in str(pattern).lower() or "gather" in str(pattern).lower():
+        narrative = (
+            f"Flagged for Placement/Layering: Fan-Out/Fan-In Network with risk score {score:.2f} ({level} risk). "
+            f"Entity {eid} exhibited high structural fan-out/fan-in behavior indicative of funds aggregation or distribution (smurfing network)."
         )
     else:
+        # Default mapping for unknown / random ML flags
+        aml_term = "Anomalous Behavior / ML Pattern"
+        if pattern == "unspecified":
+            aml_term = "ML Model Trigger: High Risk Profile"
         narrative = (
-            f"Entity {eid} flagged under {pattern} typology with risk score {score:.2f} ({level} risk). "
-            f"Computed features: {json.dumps(ev, default=str)}."
+            f"Entity {eid} flagged under '{aml_term}' typology with risk score {score:.2f} ({level} risk). "
+            f"Computed features: {json.dumps(ev, default=str)}. This entity triggered supervised ML models without matching a rigid static rule."
         )
 
     # SAR draft if action is report or level is high
@@ -93,7 +108,7 @@ def deterministic_explanation(item: FlaggedItem, intent_type: str) -> tuple[str,
     if action == "report" or level == "high":
         sar_draft = (
             f"SUSPICIOUS ACTIVITY REPORT DRAFT | Subject: {eid} | Risk Level: {level.upper()} (Score: {score:.2f})\n"
-            f"Summary: Investigation revealed subject participating in suspicious {pattern} activity. "
+            f"Summary: Investigation revealed subject participating in suspicious financial activity fitting the typology of {pattern}. "
             f"Evidentiary basis: {narrative} "
             f"Recommended for formal regulatory filing and account escalation."
         )

@@ -163,7 +163,7 @@ def run_graph_analysis(
                     existing = graph_flags.get(node, {})
                     graph_flags[node] = {
                         **existing,
-                        "pattern": "layering",
+                        "pattern": "u_turn_layering",
                         "cycle": True,
                         "cycle_length": len(cycle),
                         "detail": existing.get("detail", "") + f" | Cycle detected (len={len(cycle)})",

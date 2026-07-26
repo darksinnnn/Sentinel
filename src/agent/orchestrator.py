@@ -35,6 +35,12 @@ def process_query(query: str, session_id: str = "default_session") -> AgentRespo
     """
     logger.info(f"Orchestrator received query: '{query}' [session: {session_id}]")
     
+    # Intercept Custom Upload queries
+    if query.startswith("Run custom scan on "):
+        from src.tools.custom_upload_tool import run_custom_upload_analysis
+        file_path = query.replace("Run custom scan on ", "").strip()
+        return run_custom_upload_analysis(file_path, session_id)
+    
     # 1. Intent Extraction
     intent: IntentObject = extract_intent(query, session_id=session_id)
     intent_type = intent.intent_type
@@ -107,6 +113,18 @@ def process_query(query: str, session_id: str = "default_session") -> AgentRespo
         tools_skipped = ["eda", "feature_engineering", "anomaly_detection", "risk_classification", "single_entity_lookup", "sanctions_screening"]
         
         flagged_items = run_aggregation_query(filters, session_id=session_id)
+        
+        # Build chart data for the UI
+        supporting_metrics["aggregation_chart"] = {
+            "title": "Sub-Threshold Transaction Volume by Customer",
+            "data": [
+                {
+                    "name": item.entity_id,
+                    "txns": item.evidence.get("sub_threshold_txns", 0),
+                    "amount": item.evidence.get("total_amount", 0)
+                } for item in flagged_items
+            ]
+        }
 
     elif intent_type == "single_entity_lookup":
         # Architecture §5.8 — Validation gate:
