@@ -31,7 +31,7 @@ export async function fetchAuditRecord(auditRef: string): Promise<AuditRecord> {
 }
 
 export async function switchDataset(mode: 'main' | 'sample'): Promise<{ status: string, message: string }> {
-  const response = await fetch(`${API_BASE_URL}/dataset/switch`, {
+  const response = await fetch(`${BASE_URL}/api/v1/dataset/switch`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

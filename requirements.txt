@@ -3,8 +3,7 @@ pandas
 pyarrow
 networkx
 scikit-learn
-langgraph
-langchain
+lightgbm
 pydantic
 fastapi
 uvicorn
