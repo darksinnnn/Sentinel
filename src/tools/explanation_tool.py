@@ -109,20 +109,22 @@ def generate_explanations(
     reasoning: str,
     flagged_items: List[FlaggedItem],
     supporting_metrics: Dict[str, Any] = None,
-    session_id: str = "default_session"
+    session_id: str = "default_session",
+    prior_context: str = "",
 ) -> AgentResponse:
     """
     Explanation & Narrative Layer (Phase 3 Core):
-    Gradiates raw tool output facts into natural-language narratives and SAR drafts,
-    either via LLM or deterministic fallback parser.
+    Generates grounded narratives and SAR drafts, either via LLM or deterministic fallback.
+    prior_context: formatted prior-turn block injected for follow-up queries.
     """
+
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
 
     if api_key and not api_key.startswith("your_") and flagged_items:
         try:
             import requests
 
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
             
             # Format minimal payload to prevent token bloat
             items_payload = [
@@ -137,8 +139,13 @@ def generate_explanations(
             ]
 
             prompt_input = (
+                f"{prior_context + chr(10) if prior_context else ''}"
                 f"Query: {query}\n"
                 f"Intent: {intent_type}\n"
+                f"Filters: {json.dumps(filters_detected, default=str)}\n"
+                f"IMPORTANT: Tie each explanation explicitly to what the analyst asked about.\n"
+                f"If the query asked about structuring, say 'flagged because it matches the structuring pattern you asked about: ...'.\n"
+                f"If this is a follow-up, reference the prior context above.\n"
                 f"Flagged Items Data:\n{json.dumps(items_payload, indent=2, default=str)}\n"
             )
 
@@ -155,7 +162,7 @@ def generate_explanations(
                 }
             }
 
-            response = requests.post(url, json=payload, timeout=12)
+            response = requests.post(url, json=payload, timeout=3)
             if response.status_code == 200:
                 res_data = response.json()
                 text = res_data["candidates"][0]["content"]["parts"][0]["text"]

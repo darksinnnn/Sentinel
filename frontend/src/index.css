@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-desk-950: #12181B;
+  --color-desk-900: #1A2226;
+  --color-desk-800: #222C31;
+
+  --color-paper-50: #EFEAE0;
+  --color-paper-100: #1F2A2E;
+  --color-paper-200: #2D3D43;
+  --color-paper-800: #3D3428;
+  --color-paper-900: #F1F5F9;
+
+  --color-ink-800: #1F2A2E;
+  --color-ink-700: #2D3D43;
+  --color-ink-600: #435860;
+  --color-ink-300: #94A8B0;
+  --color-ink-100: #D8E2E6;
+
+  --color-verdigris-500: #4F7C71;
+  --color-verdigris-400: #64978B;
+  --color-verdigris-600: #3C6158;
+
+  --color-stamp-red: #A63D2F;
+  --color-stamp-amber: #B08A3E;
+  --color-stamp-slate: #6B7280;
+  --color-stamp-ghost: #8A8378;
+
+  --font-serif: "Inter", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, monospace;
+}
+
+/* Custom noise/smudge texture for INSUFFICIENT EVIDENCE verdict stamp */
+.stamp-smudged-texture {
+  background-image: radial-gradient(#8A8378 0.75px, transparent 0.75px), radial-gradient(#6B7280 0.75px, #1F2A2E 0.75px);
+  background-size: 6px 6px;
+  background-position: 0 0, 3px 3px;
+  opacity: 0.85;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #12181B;
+}
+::-webkit-scrollbar-thumb {
+  background: #2D3D43;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4F7C71;
+}
