@@ -26,8 +26,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
-from src.api.routers import upload
+from src.api.routers import upload, dataset
 app.include_router(upload.router, prefix="/api/v1")
+app.include_router(dataset.router, prefix="/api/v1/dataset")
 
 # Enable CORS for frontend clients
 app.add_middleware(

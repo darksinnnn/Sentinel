@@ -17,7 +17,9 @@ def generate_synthetic_data():
         "entity_name": [f"Entity {i}" for i in range(1, 101)],
         "bank_name": np.random.choice(["Global Bank", "Trust Financial", "Metro Bank", "Apex Credit"], 100),
         "country": np.random.choice(["US", "UK", "CA", "SG", "UAE"], 100, p=[0.6, 0.15, 0.1, 0.05, 0.1]),
-        "segment": np.random.choice(["Retail", "Corporate", "High Net Worth"], 100, p=[0.7, 0.2, 0.1])
+        "segment": np.random.choice(["Retail", "Corporate", "High Net Worth"], 100, p=[0.7, 0.2, 0.1]),
+        "kyc_risk_rating": np.random.choice(["Low", "Medium", "High"], 100, p=[0.8, 0.15, 0.05]),
+        "account_age_days": np.random.randint(10, 3600, size=100)
     }
     customers_df = pd.DataFrame(customers_data)
     customers_df.to_parquet('data/customers.parquet')

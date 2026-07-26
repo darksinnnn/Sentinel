@@ -8,7 +8,7 @@ import { CaseLog } from './components/CaseLog';
 import { SupportingMetrics } from './components/SupportingMetrics';
 import { SystemOverview } from './components/SystemOverview';
 import type { AgentResponse } from './types/outputContract';
-import { sendQuery } from './api/sentinel';
+import { sendQuery, switchDataset } from './api/sentinel';
 
 interface HistoryItem {
   query: string;
@@ -21,6 +21,7 @@ export function App() {
   const [currentResponse, setCurrentResponse] = useState<AgentResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [datasetMode, setDatasetMode] = useState<'main' | 'sample'>('sample');
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
@@ -82,6 +83,17 @@ export function App() {
     }
   };
 
+  const handleDatasetToggle = async () => {
+    const newMode = datasetMode === 'main' ? 'sample' : 'main';
+    try {
+      await switchDataset(newMode);
+      setDatasetMode(newMode);
+      setError(null);
+    } catch (err: any) {
+      setError(`Dataset Switch Failed: ${err.message}`);
+    }
+  };
+
   const exportQueryReport = () => {
     if (!currentResponse) return;
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentResponse, null, 2));
@@ -128,6 +140,14 @@ export function App() {
           </span>
 
           <div className="flex items-center gap-3">
+          <button 
+            onClick={handleDatasetToggle}
+            className={`font-sans text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4F7C71] ${datasetMode === 'sample' ? 'bg-[#A63D2F]/20 text-[#A63D2F] border border-[#A63D2F]/40' : 'bg-[#4F7C71]/20 text-[#4F7C71] border border-[#4F7C71]/40'}`}
+            title="Toggle between full historical dataset and synthetic demo subset"
+          >
+            Data: {datasetMode === 'sample' ? 'Synthetic' : 'Main'}
+          </button>
+          
           <button 
             onClick={() => setShowOverview(!showOverview)}
             className={`font-sans text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4F7C71] ${showOverview ? 'bg-[#4F7C71] text-white shadow-[0_0_15px_rgba(79,124,113,0.3)]' : 'bg-transparent text-[#94A8B0] hover:text-[#EFEAE0] hover:bg-[#2D3D43]'}`}

@@ -31,11 +31,11 @@ HI-Small_Trans.csv
 
 # Data files (whitelist specific samples)
 data/*
-!data/processed/
-data/processed/*
-!data/processed/ml_scored.parquet
-!data/processed/customers.parquet
-!data/sample_upload.csv
+!data/sample/
+data/sample/*
+!data/sample/ml_scored.parquet
+!data/sample/customers.parquet
+!data/sample/sample_upload.csv
 
 walkthrough.md
 
