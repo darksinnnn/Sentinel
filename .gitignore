@@ -51,3 +51,9 @@ data/processed/diagnostic_report.md
 data/processed/medium_flood_diagnostic.md
 data/processed/session_findings_2026_07_26.md
 claude_onboarding_context.md
+Sentinel_UI_Design_Spec.md
+
+# Python Cache
+__pycache__/
+*.py[cod]
+

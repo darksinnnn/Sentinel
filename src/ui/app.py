@@ -183,14 +183,37 @@ if active_query:
                             st.markdown("#### 📄 Draft Suspicious Activity Report (SAR)")
                             st.info(item["sar_draft"])
 
-            # 3. Supporting Visualizations
+            # 3. Supporting Visualizations & Metrics
             if metrics:
-                st.subheader("📊 Supporting Metrics & Visuals")
+                st.subheader("📊 Supporting Metrics & Evidence Visuals")
+
+                # Graph Analysis Metrics
+                if "graph" in metrics:
+                    g = metrics["graph"]
+                    st.markdown("#### 🌐 Graph Network Topology Analysis (NetworkX)")
+                    gcol1, gcol2, gcol3, gcol4, gcol5 = st.columns(5)
+                    gcol1.metric("Nodes", g.get("total_nodes", 0))
+                    gcol2.metric("Edges", g.get("total_edges", 0))
+                    gcol3.metric("Smurfing (Fan-Out)", g.get("fan_out_count", 0))
+                    gcol4.metric("Aggregation (Fan-In)", g.get("fan_in_count", 0))
+                    gcol5.metric("Layering Cycles", g.get("cycle_node_count", 0))
+
+                # OFAC Sanctions Matches
+                if "ofac_sanctions_matches" in metrics and metrics["ofac_sanctions_matches"]:
+                    st.markdown("#### 🛡️ OFAC Sanctions Matches")
+                    st.warning(f"Matches Found: {len(metrics['ofac_sanctions_matches'])}")
+                    st.json(metrics["ofac_sanctions_matches"])
+
+                # Population & EDA Stats
                 if "risk_distribution" in metrics:
                     dist = metrics["risk_distribution"]
                     df_dist = pd.DataFrame(list(dist.items()), columns=["Risk Tier", "Count"])
                     fig = px.pie(df_dist, names="Risk Tier", values="Count", title="Risk Tier Distribution", color_discrete_sequence=px.colors.qualitative.Pastel)
                     st.plotly_chart(fig, use_container_width=True)
+
+                if "amount_statistics" in metrics:
+                    st.markdown("#### 💵 Monetary Distribution Statistics")
+                    st.json(metrics["amount_statistics"])
 
             # Store message in chat history
             st.session_state.messages.append({
@@ -198,3 +221,4 @@ if active_query:
                 "content": f"Processed query '{active_query}'. Flagged {len(flagged)} items. Audit Ref: `{audit_ref}`",
                 "data": response_json
             })
+

@@ -29,6 +29,7 @@ class Entities(BaseModel):
     date_range: Optional[str] = None
     txn_type: Optional[str] = None
     amount_threshold: Optional[float] = None
+    count_threshold: Optional[int] = None
 
 
 class IntentObject(BaseModel):
@@ -44,7 +45,9 @@ class ToolFilters(BaseModel):
     date_range: Optional[str] = None
     txn_type: Optional[str] = None
     amount_threshold: Optional[float] = None
+    count_threshold: Optional[int] = None
     pattern_hint: PatternHint = "unspecified"
+
 
 
 class ExecutionSummary(BaseModel):

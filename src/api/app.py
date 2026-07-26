@@ -11,6 +11,11 @@ from pydantic import BaseModel, Field
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from dotenv import load_dotenv
+
+# Load .env variables at API startup
+load_dotenv()
+
 from src.schemas import AgentResponse
 from src.agent.orchestrator import process_query
 from src.audit.logger import DB_PATH
