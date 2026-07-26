@@ -20,7 +20,7 @@ from src.tools.risk_classifier import format_risk_classification
 from src.tools.entity_lookup import run_entity_lookup
 from src.tools.sanctions_tool import run_sanctions_screening
 from src.tools.aggregation_tool import run_aggregation_query
-from src.tools.explanation_stub import stub_explanation_node
+from src.tools.explanation_tool import generate_explanations
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -102,8 +102,8 @@ def process_query(query: str, session_id: str = "default_session") -> AgentRespo
     filters_dict = intent.entities.model_dump()
     filters_dict["pattern_hint"] = intent.pattern_hint
 
-    # 3. Explanation Node (Stub for Phase 2, LLM call in Phase 3)
-    response = stub_explanation_node(
+    # 3. Explanation Node (Phase 3 LLM + Grounded Narrative + SAR Draft)
+    response = generate_explanations(
         query=query,
         intent_type=intent_type,
         filters_detected=filters_dict,
