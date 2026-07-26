@@ -30,3 +30,23 @@ data/
 *.csv
 
 walkthrough.md
+
+# ── Diagnostic & one-off check scripts (session debugging, not part of system) ──
+src/eval/check_cashout_ratio.py
+src/eval/check_fanout_recall.py
+src/eval/check_fn_exact.py
+src/eval/check_postfix_dist.py
+src/eval/check_retail_volume.py
+src/eval/check_rule_zero.py
+src/eval/diag_cashout.py
+src/eval/diag_medium_flood.py
+src/eval/diag_patterns.py
+src/eval/diag_thresholds.py
+src/eval/run_diagnostics.py
+src/eval/test_composite.py
+src/eval/test_customer_composite.py
+
+# ── Session diagnostic reports (generated artefacts, not source) ──
+data/processed/diagnostic_report.md
+data/processed/medium_flood_diagnostic.md
+data/processed/session_findings_2026_07_26.md
