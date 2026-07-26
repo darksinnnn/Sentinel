@@ -67,6 +67,7 @@ class FlaggedItem(BaseModel):
     detected_pattern: str
     explanation: str
     evidence: Dict[str, Any] = Field(default_factory=dict)
+    chart_data: Optional[List[Dict[str, Any]]] = None
     recommended_action: RecommendedAction
     sar_draft: Optional[str] = None
 

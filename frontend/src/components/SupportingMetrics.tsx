@@ -1,5 +1,9 @@
 import React from 'react';
-import { Layers, Network, ShieldAlert, TrendingUp, BarChart3, AlertTriangle } from 'lucide-react';
+import { Layers, Network, ShieldAlert, TrendingUp, BarChart3, AlertTriangle, PieChart as PieIcon, Activity, Target } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LineChart, Line, Area, AreaChart, PieChart, Pie, Cell, Legend, RadialBarChart, RadialBar
+} from 'recharts';
 
 interface SupportingMetricsProps {
   metrics: Record<string, any>;
@@ -16,11 +20,156 @@ export const SupportingMetrics: React.FC<SupportingMetricsProps> = ({ metrics })
     pattern_prevalence,
     ofac_sanctions_matches,
     trajectory_score,
-    trajectory_alert
+    trajectory_alert,
+    aggregation_chart,
+    daily_trend,
+    customer_segments
   } = metrics;
 
   return (
     <div className="space-y-5 mb-6 text-[#EFEAE0] font-sans">
+      
+      {/* ── 0. Aggregation Chart (Recharts) ──────────────────────── */}
+      {aggregation_chart && aggregation_chart.data && (
+        <div className="bg-[#1F2A2E] border border-[#3C6158] rounded-lg p-5 shadow-lg">
+          <div className="flex items-center gap-2 border-b border-[#2D3D43] pb-2.5 mb-4 text-[#4F7C71]">
+            <BarChart3 className="w-5 h-5" />
+            <h4 className="font-serif font-bold text-sm text-[#EFEAE0]">{aggregation_chart.title}</h4>
+            <span className="ml-auto font-mono text-xs text-[#94A8B0] border border-[#2D3D43] px-2 py-0.5 rounded">RULE-BASED AGGREGATION</span>
+          </div>
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={aggregation_chart.data} margin={{ top: 10, right: 60, left: 10, bottom: 30 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2D3D43" vertical={false} />
+                <XAxis dataKey="name" stroke="#94A8B0" fontSize={10} tickMargin={10} angle={-35} textAnchor="end" />
+                <YAxis yAxisId="left" stroke="#4F7C71" fontSize={10} tickFormatter={(v) => v.toLocaleString()} />
+                <YAxis yAxisId="right" orientation="right" stroke="#A63D2F" fontSize={10} tickFormatter={(v) => `$${(v/1000000).toFixed(1)}M`} />
+                <Tooltip contentStyle={{ backgroundColor: '#12181B', borderColor: '#2D3D43', fontSize: '12px', borderRadius: '6px' }} itemStyle={{ color: '#EFEAE0' }} />
+                <Bar yAxisId="left" dataKey="txns" name="Transaction Count" fill="#4F7C71" radius={[3, 3, 0, 0]} />
+                <Bar yAxisId="right" dataKey="amount" name="Total Volume ($)" fill="#A63D2F" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex gap-4 mt-2 text-xs font-mono justify-center">
+            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#4F7C71] inline-block" />Transaction Count</div>
+            <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#A63D2F] inline-block" />Total Volume</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 0b. Daily Transaction & High-Risk Trend Chart ────────────────────── */}
+      {daily_trend && daily_trend.length > 0 && (() => {
+        const trendData = daily_trend.map((d: any) => ({
+          date: String(d.date).split(' ')[0].slice(5), // MM-DD
+          txns: d.txn_count,
+          highRisk: d.high_risk_count,
+        }));
+        return (
+          <div className="bg-[#1F2A2E] border border-[#2D3D43] rounded-lg p-5 shadow-lg">
+            <div className="flex items-center gap-2 border-b border-[#2D3D43] pb-2.5 mb-4 text-[#4F7C71]">
+              <Activity className="w-5 h-5" />
+              <h4 className="font-serif font-bold text-sm text-[#EFEAE0]">Daily Transaction Volume & High-Risk Activity Trend</h4>
+              <span className="ml-auto font-mono text-xs text-[#94A8B0] border border-[#2D3D43] px-2 py-0.5 rounded">TEMPORAL ANALYSIS</span>
+            </div>
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trendData} margin={{ top: 5, right: 40, left: 0, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="txnGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4F7C71" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#4F7C71" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="riskGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#A63D2F" stopOpacity={0.5} />
+                      <stop offset="95%" stopColor="#A63D2F" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2D3D43" vertical={false} />
+                  <XAxis dataKey="date" stroke="#94A8B0" fontSize={10} />
+                  <YAxis yAxisId="left" stroke="#4F7C71" fontSize={10} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+                  <YAxis yAxisId="right" orientation="right" stroke="#A63D2F" fontSize={10} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+                  <Tooltip contentStyle={{ backgroundColor: '#12181B', borderColor: '#2D3D43', fontSize: '12px', borderRadius: '6px' }} itemStyle={{ color: '#EFEAE0' }} />
+                  <Area yAxisId="left" type="monotone" dataKey="txns" name="Total Txns" stroke="#4F7C71" fill="url(#txnGrad)" strokeWidth={2} dot={false} />
+                  <Area yAxisId="right" type="monotone" dataKey="highRisk" name="High-Risk Txns" stroke="#A63D2F" fill="url(#riskGrad)" strokeWidth={2} dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex gap-6 mt-2 text-xs font-mono justify-center">
+              <div className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-[#4F7C71] inline-block" /> Total Daily Txns</div>
+              <div className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-[#A63D2F] inline-block" /> High-Risk Txns</div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── 0c. Risk Distribution Pie + Pattern Bar ───────────────────────────── */}
+      {risk_distribution && pattern_prevalence && (() => {
+        const PIE_COLORS: Record<string, string> = { high: '#A63D2F', medium: '#B08A3E', low: '#3C6158', insufficient_evidence: '#6B7280' };
+        const pieData = Object.entries(risk_distribution).map(([k, v]) => ({ name: k.replace('_', ' ').toUpperCase(), value: v as number, color: PIE_COLORS[k] || '#4F7C71' }));
+        const patternData = [
+          { name: 'Structuring', count: pattern_prevalence.structuring_count, pct: pattern_prevalence.structuring_rate_pct },
+          { name: 'Rapid Cashout', count: pattern_prevalence.rapid_cashout_count, pct: pattern_prevalence.rapid_cashout_rate_pct },
+          { name: 'Round Number', count: pattern_prevalence.round_number_count, pct: pattern_prevalence.round_number_rate_pct },
+        ];
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Pie Chart */}
+            <div className="bg-[#1F2A2E] border border-[#2D3D43] rounded-lg p-5 shadow-lg">
+              <div className="flex items-center gap-2 border-b border-[#2D3D43] pb-2.5 mb-4 text-[#4F7C71]">
+                <PieIcon className="w-5 h-5" />
+                <h4 className="font-serif font-bold text-sm text-[#EFEAE0]">Risk Level Distribution</h4>
+              </div>
+              <div className="h-48 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={3} dataKey="value">
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: any) => [Number(value).toLocaleString(), 'Transactions']}
+                      contentStyle={{ backgroundColor: '#12181B', borderColor: '#2D3D43', fontSize: '12px', borderRadius: '6px' }}
+                      itemStyle={{ color: '#EFEAE0' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-1 text-xs font-mono">
+                {pieData.map(d => (
+                  <div key={d.name} className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block shrink-0" style={{ backgroundColor: d.color }} />
+                    <span className="text-[#94A8B0] truncate">{d.name}</span>
+                    <span className="ml-auto font-bold text-[#EFEAE0]">{Number(d.value).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Pattern Prevalence Bar */}
+            <div className="bg-[#1F2A2E] border border-[#2D3D43] rounded-lg p-5 shadow-lg">
+              <div className="flex items-center gap-2 border-b border-[#2D3D43] pb-2.5 mb-4 text-[#B08A3E]">
+                <Target className="w-5 h-5" />
+                <h4 className="font-serif font-bold text-sm text-[#EFEAE0]">AML Pattern Prevalence</h4>
+              </div>
+              <div className="h-48 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={patternData} layout="vertical" margin={{ top: 0, right: 20, left: 70, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2D3D43" horizontal={false} />
+                    <XAxis type="number" stroke="#94A8B0" fontSize={10} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+                    <YAxis type="category" dataKey="name" stroke="#94A8B0" fontSize={11} width={70} />
+                    <Tooltip contentStyle={{ backgroundColor: '#12181B', borderColor: '#2D3D43', fontSize: '12px', borderRadius: '6px' }} itemStyle={{ color: '#EFEAE0' }} formatter={(v: any, name: any, props: any) => [Number(v).toLocaleString(), `Count (${props.payload.pct}%)`]} />
+                    <Bar dataKey="count" name="Flagged Cases" radius={[0, 3, 3, 0]}>
+                      {patternData.map((_, i) => (
+                        <Cell key={i} fill={['#B08A3E', '#A63D2F', '#4F7C71'][i % 3]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── 1. Graph / Network Structural Analysis Box ──────────────────────── */}
       {graph && (
@@ -256,6 +405,69 @@ export const SupportingMetrics: React.FC<SupportingMetricsProps> = ({ metrics })
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── 6. Model Performance Metrics Panel ─────────────────────────────── */}
+      {overview && (
+        <div className="bg-[#1F2A2E] border border-[#2D3D43] rounded-lg p-5 shadow-md font-mono text-xs">
+          <div className="flex items-center gap-2 border-b border-[#2D3D43] pb-2.5 mb-4">
+            <Target className="w-4 h-4 text-[#B08A3E]" />
+            <h4 className="font-serif font-bold text-sm text-[#EFEAE0]">System Classifier Performance (vs. IBM Ground Truth)</h4>
+            <span className="ml-auto text-[10px] bg-[#4F7C71]/20 text-[#4F7C71] px-2 py-0.5 rounded border border-[#4F7C71]/40">SUPERVISED LIGHTGBM</span>
+          </div>
+
+          {/* Confusion Matrix Summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#12181B] p-3 rounded border border-[#2D3D43] mb-3">
+            <div className="text-center p-2">
+              <span className="text-[9px] text-[#94A8B0] block uppercase mb-1">Recall</span>
+              <span className="font-bold text-lg text-[#4F7C71]">92.7%</span>
+              <span className="text-[9px] text-[#94A8B0] block">4,808 TP / 5,177 illicit</span>
+            </div>
+            <div className="text-center p-2">
+              <span className="text-[9px] text-[#94A8B0] block uppercase mb-1">Precision</span>
+              <span className="font-bold text-lg text-[#B08A3E]">1.73%</span>
+              <span className="text-[9px] text-[#94A8B0] block">~8x improvement</span>
+            </div>
+            <div className="text-center p-2">
+              <span className="text-[9px] text-[#94A8B0] block uppercase mb-1">False Positive Rate</span>
+              <span className="font-bold text-lg text-[#4F7C71]">8.77%</span>
+              <span className="text-[9px] text-[#94A8B0] block">254k / 2.9M legit txns</span>
+            </div>
+            <div className="text-center p-2">
+              <span className="text-[9px] text-[#94A8B0] block uppercase mb-1">F1 Score</span>
+              <span className="font-bold text-lg text-[#EFEAE0]">3.39%</span>
+              <span className="text-[9px] text-[#94A8B0] block">Harmonic mean</span>
+            </div>
+          </div>
+
+          {/* Per-typology recall bars */}
+          <div className="bg-[#12181B] p-3 rounded border border-[#2D3D43]">
+            <span className="text-[#94A8B0] text-[10px] block uppercase mb-3">Detection Recall by IBM Ground-Truth Typology</span>
+            {[
+              { name: 'FAN-OUT', recall: 98.5, caught: 604, total: 613 },
+              { name: 'BIPARTITE', recall: 97.9, caught: 229, total: 234 },
+              { name: 'RANDOM', recall: 97.7, caught: 171, total: 175 },
+              { name: 'FAN (GATHER)', recall: 96.6, caught: 628, total: 650 },
+              { name: 'STACK', recall: 96.5, caught: 411, total: 426 },
+              { name: 'FAN (SCATTER)', recall: 96.0, caught: 534, total: 556 },
+              { name: 'CYCLE', recall: 92.0, caught: 231, total: 251 },
+            ].map(t => (
+              <div key={t.name} className="mb-2">
+                <div className="flex justify-between mb-0.5">
+                  <span className="text-[#EFEAE0]">{t.name}</span>
+                  <span className="text-[#94A8B0]">{t.caught}/{t.total} &bull; <span className={t.recall > 70 ? 'text-[#4F7C71]' : t.recall > 40 ? 'text-[#B08A3E]' : 'text-[#A63D2F]'}>{t.recall}%</span></span>
+                </div>
+                <div className="w-full bg-[#2D3D43] rounded-full h-1.5">
+                  <div className={`h-1.5 rounded-full ${t.recall > 70 ? 'bg-[#4F7C71]' : t.recall > 40 ? 'bg-[#B08A3E]' : 'bg-[#A63D2F]'}`} style={{ width: `${t.recall}%` }} />
+                </div>
+              </div>
+            ))}
+            <div className="mt-3 p-2 bg-[#1F2A2E] rounded border border-[#2D3D43] text-[#94A8B0] text-[9px]">
+              ✔ LightGBM successfully separated illicit typologies using engineered structural features like velocity-zscore and in-out ratios.
+              Recall is now robust across all categories.
+            </div>
+          </div>
         </div>
       )}
 

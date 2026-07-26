@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Shield, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, AlertCircle, CheckCircle2, ShieldCheck, FileCheck, Layers } from 'lucide-react';
+import { Shield, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, AlertCircle, CheckCircle2, ShieldCheck, FileCheck, Layers, Download } from 'lucide-react';
 import { QueryBar } from './components/QueryBar';
 import { ExecutionSummaryPanel } from './components/ExecutionSummaryPanel';
 import { EvidenceCard } from './components/EvidenceCard';
 import { TracePanel } from './components/TracePanel';
 import { CaseLog } from './components/CaseLog';
 import { SupportingMetrics } from './components/SupportingMetrics';
+import { SystemOverview } from './components/SystemOverview';
 import type { AgentResponse } from './types/outputContract';
-import { sendQuery } from './api/sentinel';
+import { sendQuery, switchDataset } from './api/sentinel';
 
 interface HistoryItem {
   query: string;
@@ -20,9 +21,11 @@ export function App() {
   const [currentResponse, setCurrentResponse] = useState<AgentResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [datasetMode, setDatasetMode] = useState<'main' | 'sample'>('sample');
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [showOverview, setShowOverview] = useState(false);
 
   const handleSearch = async (queryText: string) => {
     setIsLoading(true);
@@ -44,6 +47,62 @@ export function App() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleUpload = async (file: File) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const res = await fetch('http://localhost:8000/api/v1/analyze-custom', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to upload and analyze custom data.');
+      }
+      
+      const response = await res.json();
+      setCurrentResponse(response);
+
+      const newHistoryItem: HistoryItem = {
+        query: `Custom Upload: ${file.name}`,
+        auditRef: response.audit_ref,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        flaggedCount: response.flagged_items.length,
+      };
+      setHistory((prev) => [newHistoryItem, ...prev]);
+    } catch (err: any) {
+      setError(err.message || 'An error occurred during custom upload.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDatasetToggle = async () => {
+    const newMode = datasetMode === 'main' ? 'sample' : 'main';
+    try {
+      await switchDataset(newMode);
+      setDatasetMode(newMode);
+      setError(null);
+    } catch (err: any) {
+      setError(`Dataset Switch Failed: ${err.message}`);
+    }
+  };
+
+  const exportQueryReport = () => {
+    if (!currentResponse) return;
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentResponse, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `sentinel_query_report_${currentResponse.audit_ref}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
   };
 
   return (
@@ -80,13 +139,30 @@ export function App() {
             API STATUS: 127.0.0.1:8000
           </span>
 
-          <button
-            onClick={() => setShowRightSidebar(!showRightSidebar)}
-            className="text-[#94A8B0] hover:text-[#EFEAE0] p-1.5 rounded hover:bg-[#12181B] transition-colors focus-visible:ring-2 focus-visible:ring-[#4F7C71] focus-visible:outline-none"
-            title="Toggle Trace Panel"
+          <div className="flex items-center gap-3">
+          <button 
+            onClick={handleDatasetToggle}
+            className={`font-sans text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4F7C71] ${datasetMode === 'sample' ? 'bg-[#A63D2F]/20 text-[#A63D2F] border border-[#A63D2F]/40' : 'bg-[#4F7C71]/20 text-[#4F7C71] border border-[#4F7C71]/40'}`}
+            title="Toggle between full historical dataset and synthetic demo subset"
           >
-            {showRightSidebar ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+            Data: {datasetMode === 'sample' ? 'Synthetic' : 'Main'}
           </button>
+          
+          <button 
+            onClick={() => setShowOverview(!showOverview)}
+            className={`font-sans text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4F7C71] ${showOverview ? 'bg-[#4F7C71] text-white shadow-[0_0_15px_rgba(79,124,113,0.3)]' : 'bg-transparent text-[#94A8B0] hover:text-[#EFEAE0] hover:bg-[#2D3D43]'}`}
+          >
+            Architecture & Metrics
+          </button>
+          
+          <button 
+            onClick={() => setShowRightSidebar(!showRightSidebar)}
+            className="text-[#94A8B0] hover:text-[#EFEAE0] transition-colors p-1 rounded hover:bg-[#2D3D43] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4F7C71]"
+            title="Toggle Audit Trace Panel"
+          >
+            {showRightSidebar ? <PanelRightClose className="w-5 h-5" /> : <PanelRightOpen className="w-5 h-5" />}
+          </button>
+        </div>
         </div>
       </header>
 
@@ -98,10 +174,20 @@ export function App() {
         )}
 
         {/* Center Pane: The Desk */}
-        <main className="flex-1 bg-[#12181B] p-4 sm:p-6 overflow-y-auto min-w-0">
-          <div className="max-w-4xl mx-auto">
-            {/* Query Bar */}
-            <QueryBar onSearch={handleSearch} isLoading={isLoading} />
+        <div className="flex flex-1 overflow-hidden relative">
+        {/* Main Content Area: Analysis Desk or System Overview */}
+        <div className={`flex-1 overflow-y-auto ${showRightSidebar ? 'pr-0 border-r border-[#2D3D43]' : ''} transition-all duration-300 relative scroll-smooth`}>
+          <div className="max-w-5xl mx-auto p-8 relative min-h-full">
+            {showOverview ? (
+              <SystemOverview />
+            ) : (
+              <div className="flex flex-col gap-6 relative z-10">
+                {/* ── Query Bar ────────────────────────────────────────────── */}
+                <QueryBar 
+                  onSearch={handleSearch} 
+                  onUpload={handleUpload}
+                  isLoading={isLoading} 
+                />
 
             {/* Error Notification */}
             {error && (
@@ -182,9 +268,18 @@ export function App() {
                       {currentResponse.flagged_items.length} items flagged
                     </span>
                   </h3>
-                  <span className="font-mono text-xs text-[#94A8B0]">
-                    Audit Ref: <strong className="text-[#4F7C71]">{currentResponse.audit_ref}</strong>
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={exportQueryReport}
+                      className="flex items-center gap-1.5 font-mono text-xs text-[#94A8B0] hover:text-[#EFEAE0] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4F7C71] rounded px-1"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Export Query
+                    </button>
+                    <span className="font-mono text-xs text-[#94A8B0]">
+                      Audit Ref: <strong className="text-[#4F7C71]">{currentResponse.audit_ref}</strong>
+                    </span>
+                  </div>
                 </div>
 
                 {currentResponse.flagged_items.length === 0 ? (
@@ -198,8 +293,11 @@ export function App() {
                 )}
               </div>
             )}
+            
+              </div>
+            )}
           </div>
-        </main>
+        </div>
 
         {/* Right Pane: Execution & Audit Trace */}
         {showRightSidebar && (
@@ -208,6 +306,7 @@ export function App() {
             auditRef={currentResponse?.audit_ref || null}
           />
         )}
+      </div>
       </div>
     </div>
   );

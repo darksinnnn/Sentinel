@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.config import ML_SCORED_PATH
+from src.config import ML_SCORED_PATH, CUSTOMERS_PATH
 from src.schemas import ToolFilters
 from src.audit.logger import log_event
 
@@ -69,27 +69,53 @@ def run_anomaly_detection(filters: ToolFilters, session_id: str = "default_sessi
     # then rank those deduplicated customers and return the top 10.
     query = f"""
     SELECT
-        sender_id, txn_time, receiver_id, amount_paid,
-        ml_anomaly_score, risk_level,
-        is_structuring, is_rapid_cashout, is_round_number_suspicious,
-        amount_zscore, velocity_zscore,
-        sub_threshold_count_30d, unique_counterparties_30d, velocity_30d
+        deduped.sender_id, deduped.txn_time, deduped.receiver_id, deduped.amount_paid,
+        deduped.ml_anomaly_score, deduped.risk_level,
+        deduped.is_structuring, deduped.is_rapid_cashout, deduped.is_round_number_suspicious, deduped.typology,
+        deduped.amount_zscore, deduped.velocity_zscore,
+        deduped.sub_threshold_count_30d, deduped.unique_counterparties_30d, deduped.velocity_30d,
+        c.entity_name, c.bank_name
     FROM (
         SELECT DISTINCT ON (sender_id)
             sender_id, txn_time, receiver_id, amount_paid,
             ml_anomaly_score, risk_level,
-            is_structuring, is_rapid_cashout, is_round_number_suspicious,
+            is_structuring, is_rapid_cashout, is_round_number_suspicious, typology,
             amount_zscore, velocity_zscore,
             sub_threshold_count_30d, unique_counterparties_30d, velocity_30d
         FROM read_parquet('{ML_SCORED_PATH}')
         WHERE {where_str}
         ORDER BY sender_id, ml_anomaly_score DESC
     ) deduped
-    ORDER BY ml_anomaly_score DESC
+    LEFT JOIN read_parquet('{CUSTOMERS_PATH}') c ON deduped.sender_id = c.customer_id
+    ORDER BY deduped.ml_anomaly_score DESC
     LIMIT 10;
     """
 
     results = conn.execute(query, params).df().to_dict(orient="records")
+
+    # Fetch chart_data (30-day time series of txns) for each flagged entity
+    if results:
+        sender_ids = tuple(r["sender_id"] for r in results)
+        placeholders = ", ".join(f"'{sid}'" for sid in sender_ids)
+        chart_query = f"""
+            SELECT sender_id, CAST(txn_time AS DATE) as txn_date, SUM(amount_paid) as daily_amount, COUNT(*) as daily_count
+            FROM read_parquet('{ML_SCORED_PATH}')
+            WHERE sender_id IN ({placeholders})
+            AND CAST(txn_time AS DATE) >= (SELECT CAST(MAX(txn_time) AS DATE) - INTERVAL '30' DAY FROM read_parquet('{ML_SCORED_PATH}'))
+            GROUP BY sender_id, CAST(txn_time AS DATE)
+            ORDER BY txn_date ASC
+        """
+        chart_df = conn.execute(chart_query).df()
+        
+        for r in results:
+            # format date as string
+            entity_chart_df = chart_df[chart_df["sender_id"] == r["sender_id"]].copy()
+            if not entity_chart_df.empty:
+                entity_chart_df["txn_date"] = entity_chart_df["txn_date"].astype(str)
+                r["chart_data"] = entity_chart_df[["txn_date", "daily_amount", "daily_count"]].to_dict(orient="records")
+            else:
+                r["chart_data"] = []
+
     conn.close()
 
     log_event("anomaly_tool_executed", {

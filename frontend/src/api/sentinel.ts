@@ -29,3 +29,20 @@ export async function fetchAuditRecord(auditRef: string): Promise<AuditRecord> {
 
   return response.json();
 }
+
+export async function switchDataset(mode: 'main' | 'sample'): Promise<{ status: string, message: string }> {
+  const response = await fetch(`${API_BASE_URL}/dataset/switch`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ mode }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.detail || `API Error (${response.status})`);
+  }
+
+  return response.json();
+}

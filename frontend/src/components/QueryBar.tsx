@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Search, Tag, ArrowRight, Filter, Layers, UserCheck, ShieldAlert } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Search, Tag, ArrowRight, Filter, Layers, UserCheck, ShieldAlert, Upload } from 'lucide-react';
 
 interface QueryBarProps {
   onSearch: (query: string) => void;
+  onUpload: (file: File) => void;
   isLoading: boolean;
 }
 
@@ -13,14 +14,22 @@ const CANONICAL_CHIPS = [
   { label: 'BROAD SCAN: Full Dataset Profiling', query: 'Analyze this entire dataset and give me top suspicious activities', icon: ShieldAlert },
 ];
 
-export const QueryBar: React.FC<QueryBarProps> = ({ onSearch, isLoading }) => {
+export const QueryBar: React.FC<QueryBarProps> = ({ onSearch, onUpload, isLoading }) => {
   const [query, setQuery] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim() && !isLoading) {
       onSearch(query.trim());
     }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      onUpload(e.target.files[0]);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleChipClick = (chipQuery: string) => {
@@ -44,6 +53,24 @@ export const QueryBar: React.FC<QueryBarProps> = ({ onSearch, isLoading }) => {
         </div>
 
         <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isLoading}
+          className="bg-[#2D3D43] hover:bg-[#3C6158] text-white px-4 py-2.5 rounded-md font-sans text-sm font-semibold flex items-center gap-2 transition-all disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[#4F7C71] shadow-sm shrink-0"
+          title="Upload Custom Data (.csv or .parquet)"
+        >
+          <Upload className="w-4 h-4" />
+          <span className="hidden sm:inline">UPLOAD CSV</span>
+        </button>
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          onChange={handleFileChange} 
+          accept=".csv,.parquet" 
+          className="hidden" 
+        />
+
+        <button
           type="submit"
           disabled={isLoading || !query.trim()}
           className="bg-[#4F7C71] hover:bg-[#64978B] active:bg-[#3C6158] text-white px-5 py-2.5 rounded-md font-sans text-sm font-semibold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[#4F7C71] focus-visible:outline-none shadow-sm shrink-0"
@@ -54,11 +81,12 @@ export const QueryBar: React.FC<QueryBarProps> = ({ onSearch, isLoading }) => {
       </form>
 
       {/* Structured Benchmark Case Tags */}
-      <div className="mt-3.5 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-mono text-[#94A8B0] flex items-center gap-1.5 mr-1 uppercase">
+      <div className="mt-4">
+        <span className="text-xs font-mono text-[#94A8B0] flex items-center gap-1.5 mb-2 uppercase">
           <Tag className="w-3.5 h-3.5 text-[#4F7C71]" /> Benchmark Cases:
         </span>
-        {CANONICAL_CHIPS.map((chip, idx) => {
+        <div className="flex flex-col gap-2">
+          {CANONICAL_CHIPS.map((chip, idx) => {
           const IconComp = chip.icon;
           return (
             <button
@@ -70,9 +98,10 @@ export const QueryBar: React.FC<QueryBarProps> = ({ onSearch, isLoading }) => {
             >
               <IconComp className="w-3 h-3 text-[#4F7C71]" />
               <span>{chip.label}</span>
-            </button>
-          );
-        })}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

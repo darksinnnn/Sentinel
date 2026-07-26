@@ -24,10 +24,18 @@ HI-Small_accounts.csv
 HI-Small_Patterns.txt
 HI-Small_Trans.csv
 
-data/
+# Global ignores
 *.parquet
 *.db
 *.csv
+
+# Data files (whitelist specific samples)
+data/*
+!data/sample/
+data/sample/*
+!data/sample/ml_scored.parquet
+!data/sample/customers.parquet
+!data/sample/sample_upload.csv
 
 walkthrough.md
 
@@ -57,3 +65,5 @@ Sentinel_UI_Design_Spec.md
 __pycache__/
 *.py[cod]
 
+# Ignore ML folder
+src/ml/

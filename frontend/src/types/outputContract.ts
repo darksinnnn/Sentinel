@@ -28,6 +28,7 @@ export interface FlaggedItem {
   detected_pattern: string;
   explanation: string;
   evidence?: Record<string, any>;
+  chart_data?: Record<string, any>[];
   recommended_action?: RecommendedAction;
   sar_draft?: string | null;
 }
